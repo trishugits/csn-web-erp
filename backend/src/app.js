@@ -1,0 +1,10 @@
+const express = require('express');
+const app = express();
+
+app.use((req,res) => {
+    res.send('Hello from the server');
+})
+
+app.listen(3009, ()=> {
+    console.log("Server is successfully running on port 3009...")
+});
