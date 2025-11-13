@@ -1,6 +1,8 @@
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env')});
+
 const mongoose = require('mongoose');
 const connectDB = async () => {
-    await mongoose.connect("mongodb+srv://csn_db_user:Chandravali%402025@cluster0.fzfrlt1.mongodb.net/schoolDB?retryWrites=true&w=majority&appName=Cluster0");
+    await mongoose.connect(process.env.DB_URI);
 };
 
 module.exports = connectDB;
