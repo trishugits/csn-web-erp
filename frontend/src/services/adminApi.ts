@@ -153,6 +153,33 @@ export const adminApi = {
   },
 
   // Students
+  addStudent: (data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    studentId: string;
+    class: string;
+    password: string;
+    gender?: string;
+    dob?: string;
+    address?: string;
+    aadharId?: string;
+    fatherName?: string;
+    motherName?: string;
+    session?: string;
+  }) => {
+    return api.post('/admin/students', data);
+  },
+  importStudentsCsv: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/students/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
   getStudents: (params?: { page?: number; limit?: number; search?: string; class?: string; archived?: boolean }) => {
     return api.get('/admin/students', { params });
   },
@@ -315,6 +342,36 @@ export const adminApi = {
     notes?: string;
   }) => {
     return api.post('/admin/fees/admin/bulk-mark-paid', data);
+  },
+  getPaymentRecordsByDate: (params: {
+    startDate: string;
+    endDate: string;
+    class?: string;
+    session?: string;
+    status?: string;
+  }) => {
+    return api.get('/admin/fees/admin/payment-records', { params });
+  },
+  exportPaymentRecords: (params: {
+    startDate?: string;
+    endDate?: string;
+    class?: string;
+    session?: string;
+    status?: string;
+    search?: string;
+  }) => {
+    return api.get('/admin/fees/admin/export-records', { 
+      params,
+      responseType: 'blob'
+    });
+  },
+  searchClassReport: (params: {
+    class: string;
+    session?: string;
+    period?: string;
+    search?: string;
+  }) => {
+    return api.get('/admin/fees/admin/search-class-report', { params });
   },
   getAllStudents: (params?: { page?: number; limit?: number; search?: string; class?: string }) => {
     return api.get('/admin/students', { params });

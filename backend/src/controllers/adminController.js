@@ -525,6 +525,145 @@ exports.getAllStudents = async (req, res) => {
     }
 };
 
+exports.addStudent = async (req, res) => {
+    try {
+        const { firstName, lastName, email, phone, dob, studentId, password, gender, fatherName, motherName, address, class: className, aadharId, session } = req.body;
+        
+        // Validation
+        if (!firstName || !lastName || !email || !studentId || !password || !className) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+        
+        if (!validator.isEmail(email)) {
+            return res.status(400).json({ message: 'Invalid email' });
+        }
+        
+        if (phone && !validator.isMobilePhone(phone, 'en-IN')) {
+            return res.status(400).json({ message: 'Invalid phone number' });
+        }
+        
+        // Check if student already exists
+        const exists = await Student.findOne({ $or: [{ email }, { studentId }] });
+        if (exists) {
+            return res.status(409).json({ message: 'Student with this email or ID already exists' });
+        }
+        
+        // Hash password
+        const hashed = await bcrypt.hash(password, 10);
+        
+        // Create student
+        const student = await Student.create({
+            firstName,
+            lastName,
+            email,
+            phone: phone || '',
+            dob: dob || '',
+            studentId,
+            password: hashed,
+            gender: gender || 'male',
+            fatherName: fatherName || '',
+            motherName: motherName || '',
+            address: address || '',
+            class: className,
+            aadharId: aadharId || '',
+            session: session || new Date().getFullYear().toString(),
+            enrolledBy: req.user.id,
+            archived: false,
+            status: 'active'
+        });
+        
+        res.status(201).json({ 
+            message: 'Student added successfully', 
+            student: {
+                _id: student._id,
+                firstName: student.firstName,
+                lastName: student.lastName,
+                email: student.email,
+                studentId: student.studentId,
+                class: student.class
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+exports.importStudentsCSV = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'CSV file is required' });
+        }
+        
+        const rows = await csvUtil.csvToJson(req.file.buffer);
+        const added = [];
+        const errors = [];
+        
+        for (let i = 0; i < rows.length; i++) {
+            const r = rows[i];
+            
+            // Skip if missing required fields
+            if (!r.studentId || !r.email || !r.password || !r.firstName || !r.lastName || !r.class) {
+                errors.push({ row: i + 1, reason: 'Missing required fields' });
+                continue;
+            }
+            
+            // Validate email
+            if (!validator.isEmail(r.email)) {
+                errors.push({ row: i + 1, studentId: r.studentId, reason: 'Invalid email' });
+                continue;
+            }
+            
+            // Check if student already exists
+            const ex = await Student.findOne({ $or: [{ email: r.email }, { studentId: r.studentId }] });
+            if (ex) {
+                errors.push({ row: i + 1, studentId: r.studentId, reason: 'Student already exists' });
+                continue;
+            }
+            
+            // Hash password
+            const hashed = await bcrypt.hash(r.password, 10);
+            
+            // Create student document
+            const doc = {
+                firstName: r.firstName,
+                lastName: r.lastName,
+                email: r.email,
+                phone: r.phone || '',
+                dob: r.dob || '',
+                studentId: r.studentId,
+                password: hashed,
+                gender: r.gender || 'male',
+                fatherName: r.fatherName || '',
+                motherName: r.motherName || '',
+                address: r.address || '',
+                class: r.class,
+                aadharId: r.aadharId || '',
+                session: r.session || new Date().getFullYear().toString(),
+                enrolledBy: req.user.id,
+                archived: false,
+                status: 'active'
+            };
+            
+            try {
+                const saved = await Student.create(doc);
+                added.push({ studentId: saved.studentId, name: `${saved.firstName} ${saved.lastName}` });
+            } catch (err) {
+                errors.push({ row: i + 1, studentId: r.studentId, reason: err.message });
+            }
+        }
+        
+        res.json({ 
+            message: 'Import completed', 
+            addedCount: added.length,
+            added,
+            errorCount: errors.length,
+            errors: errors.slice(0, 10) // Return first 10 errors only
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
 exports.archiveStudent = async (req, res) => {
     try {
         const { id } = req.params;

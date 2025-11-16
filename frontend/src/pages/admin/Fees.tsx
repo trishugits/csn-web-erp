@@ -1,20 +1,18 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Loader2, DollarSign, TrendingUp, Users, AlertCircle, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, DollarSign, TrendingUp, Users, AlertCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/services/adminApi";
 import { AdminDashboardTab } from "@/components/fees/admin/AdminDashboardTab";
 import { AdminFeeStructuresTab } from "@/components/fees/admin/AdminFeeStructuresTab";
 import { AdminClassReportTab } from "@/components/fees/admin/AdminClassReportTab";
+import { AdminPaymentReportsTab } from "@/components/fees/admin/AdminPaymentReportsTab";
 
 const AdminFees = () => {
   const [selectedSession, setSelectedSession] = useState(new Date().getFullYear().toString());
-  const queryClient = useQueryClient();
 
   // Get dashboard summary
   const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
@@ -126,6 +124,7 @@ const AdminFees = () => {
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="structures">Fee Structures</TabsTrigger>
           <TabsTrigger value="reports">Class Reports</TabsTrigger>
+          <TabsTrigger value="payment-reports">Payment Reports</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard">
@@ -141,6 +140,10 @@ const AdminFees = () => {
 
         <TabsContent value="reports">
           <AdminClassReportTab session={selectedSession} />
+        </TabsContent>
+
+        <TabsContent value="payment-reports">
+          <AdminPaymentReportsTab session={selectedSession} />
         </TabsContent>
       </Tabs>
     </div>

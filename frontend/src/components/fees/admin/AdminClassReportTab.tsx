@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Download, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { Loader2, Download, CheckCircle2, Clock, AlertCircle, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -20,18 +21,29 @@ const CLASSES = ['P.G.', 'L.K.G', 'U.K.G.', '1', '2', '3', '4', '5', '6', '7', '
 export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [showManualPayment, setShowManualPayment] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
 
   const queryClient = useQueryClient();
 
   const { data: reportData, isLoading } = useQuery({
-    queryKey: ['admin-class-report', selectedClass, session, selectedPeriod],
-    queryFn: () => adminApi.getClassWiseReport({
-      class: selectedClass,
-      session,
-      period: selectedPeriod !== 'all' ? selectedPeriod : undefined,
-    }),
+    queryKey: ['admin-class-report', selectedClass, session, selectedPeriod, searchTerm],
+    queryFn: () => {
+      if (searchTerm) {
+        return adminApi.searchClassReport({
+          class: selectedClass,
+          session,
+          period: selectedPeriod !== 'all' ? selectedPeriod : undefined,
+          search: searchTerm,
+        });
+      }
+      return adminApi.getClassWiseReport({
+        class: selectedClass,
+        session,
+        period: selectedPeriod !== 'all' ? selectedPeriod : undefined,
+      });
+    },
     enabled: !!selectedClass,
   });
 
@@ -52,6 +64,31 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
   const payments = reportData?.data?.payments || [];
   const stats = reportData?.data?.stats;
   const periods = Array.from(new Set(payments.map((p: any) => p.period))).filter(Boolean);
+
+  const handleExport = async () => {
+    try {
+      const response = await adminApi.exportPaymentRecords({
+        class: selectedClass,
+        session,
+        status: undefined,
+        search: searchTerm || undefined,
+      });
+      
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `fee-report-${selectedClass}-${session}-${Date.now()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Report exported successfully!');
+    } catch (error) {
+      toast.error('Failed to export report');
+    }
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -79,7 +116,7 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
     <>
       <Card className="glass-card">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <CardTitle>Class-wise Fee Report</CardTitle>
             <div className="flex items-center gap-4">
               <Select value={selectedClass} onValueChange={setSelectedClass}>
@@ -95,22 +132,44 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
                 </SelectContent>
               </Select>
               {selectedClass && (
-                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Filter by period" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Periods</SelectItem>
-                    {periods.map((period: any) => (
-                      <SelectItem key={period} value={period}>
-                        {period}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <>
+                  <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Filter by period" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Periods</SelectItem>
+                      {periods.map((period: any) => (
+                        <SelectItem key={period} value={period}>
+                          {period}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={handleExport}
+                    disabled={payments.length === 0}
+                  >
+                    <Download className="w-4 h-4" />
+                    Export CSV
+                  </Button>
+                </>
               )}
             </div>
           </div>
+          {selectedClass && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by student name, ID, or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {!selectedClass ? (

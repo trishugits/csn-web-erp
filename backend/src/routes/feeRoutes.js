@@ -27,5 +27,8 @@ router.get('/fees/admin/dashboard', fee.getAdminDashboardSummary);
 router.get('/fees/admin/class-report', fee.getClassWiseReport);
 router.get('/fees/admin/all-classes', fee.getAllClassesWithFees);
 router.post('/fees/admin/bulk-mark-paid', fee.bulkMarkAsPaid);
+router.get('/fees/admin/payment-records', fee.getPaymentRecordsByDate);
+router.get('/fees/admin/export-records', fee.exportPaymentRecords);
+router.get('/fees/admin/search-class-report', fee.searchClassReport);
 
 module.exports = router;

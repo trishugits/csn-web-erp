@@ -100,7 +100,7 @@ export default function Dashboard() {
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
         <MetricCard
           title="Total Students"
           value={totalStudents.toLocaleString()}
@@ -115,7 +115,7 @@ export default function Dashboard() {
           delay={0.2}
           gradient="gradient-success"
         />
-        <MetricCard
+        {/* <MetricCard
           title="Fee Collection"
           value={`₹${feeCollection.toLocaleString()}`}
           icon={DollarSign}
@@ -128,7 +128,7 @@ export default function Dashboard() {
           icon={FileText}
           delay={0.4}
           gradient="gradient-danger"
-        />
+        /> */}
       </div>
 
       {/* Fee Collection Statistics */}

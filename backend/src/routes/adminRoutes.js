@@ -26,6 +26,8 @@ router.get('/notices', common.getNotice);
 router.delete('/notices/:id', notice.deleteNotice);
 router.get('/notices/published', notice.getPublishedNotices);
 
+router.post('/students', admin.addStudent);
+router.post('/students/import', upload.single('file'), admin.importStudentsCSV);
 router.get('/students', admin.getAllStudents);
 router.get('/students/classwise', admin.getStudentsClasswise); 
 router.get('/students/class/:class', admin.getStudentsByClass);

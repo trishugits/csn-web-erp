@@ -758,3 +758,194 @@ exports.bulkMarkAsPaid = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
+// Get Payment Records by Date Range (for date-wise reports)
+exports.getPaymentRecordsByDate = async (req, res) => {
+  try {
+    const { startDate, endDate, class: className, session, status } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ message: 'Start date and end date are required' });
+    }
+
+    const query = {
+      paymentDate: {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      }
+    };
+
+    if (className) query.class = className;
+    if (session) query.session = session;
+    if (status) query.status = status;
+
+    const payments = await FeePayment.find(query)
+      .populate('student', 'firstName lastName studentId email phone class')
+      .sort({ paymentDate: -1 });
+
+    // Calculate statistics
+    const stats = {
+      totalRecords: payments.length,
+      totalCollected: payments.reduce((sum, p) => sum + p.amountPaid, 0),
+      paidCount: payments.filter(p => p.status === 'paid').length,
+      partialCount: payments.filter(p => p.status === 'partial').length,
+      unpaidCount: payments.filter(p => p.status === 'unpaid').length,
+    };
+
+    res.status(200).json({
+      message: 'Payment records fetched successfully',
+      startDate,
+      endDate,
+      stats,
+      payments,
+    });
+  } catch (error) {
+    console.error('Error fetching payment records by date:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Export Payment Records as CSV
+exports.exportPaymentRecords = async (req, res) => {
+  try {
+    const { startDate, endDate, class: className, session, status, search } = req.query;
+
+    const query = {};
+
+    // Date filter
+    if (startDate && endDate) {
+      query.paymentDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    // Other filters
+    if (className) query.class = className;
+    if (session) query.session = session;
+    if (status) query.status = status;
+
+    const payments = await FeePayment.find(query)
+      .populate('student', 'firstName lastName studentId email phone class')
+      .sort({ paymentDate: -1 });
+
+    // Filter by search if provided
+    let filteredPayments = payments;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredPayments = payments.filter(p => 
+        p.student?.firstName?.toLowerCase().includes(searchLower) ||
+        p.student?.lastName?.toLowerCase().includes(searchLower) ||
+        p.student?.studentId?.toLowerCase().includes(searchLower) ||
+        p.student?.email?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Generate CSV
+    const csvHeaders = [
+      'Student ID',
+      'Student Name',
+      'Class',
+      'Email',
+      'Phone',
+      'Period',
+      'Session',
+      'Amount Due',
+      'Amount Paid',
+      'Balance',
+      'Status',
+      'Payment Date',
+      'Payment Mode',
+      'Receipt Number'
+    ];
+
+    const csvRows = filteredPayments.map(p => [
+      p.student?.studentId || '',
+      `${p.student?.firstName || ''} ${p.student?.lastName || ''}`,
+      p.class || '',
+      p.student?.email || '',
+      p.student?.phone || '',
+      p.period || '',
+      p.session || '',
+      p.amountDue || 0,
+      p.amountPaid || 0,
+      (p.amountDue - p.amountPaid) || 0,
+      p.status || '',
+      p.paymentDate ? new Date(p.paymentDate).toLocaleDateString() : '',
+      p.paymentMode || '',
+      p.receiptNumber || ''
+    ]);
+
+    const csvContent = [
+      csvHeaders.join(','),
+      ...csvRows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=payment-records-${Date.now()}.csv`);
+    res.status(200).send(csvContent);
+  } catch (error) {
+    console.error('Error exporting payment records:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Search Students in Class Report
+exports.searchClassReport = async (req, res) => {
+  try {
+    const { class: className, session, period, search } = req.query;
+
+    if (!className) {
+      return res.status(400).json({ message: 'Class parameter is required' });
+    }
+
+    const query = { class: className };
+    if (session) query.session = session;
+    if (period) query.period = period;
+
+    const payments = await FeePayment.find(query)
+      .populate('student', 'firstName lastName studentId email phone')
+      .sort({ 'student.firstName': 1 });
+
+    // Filter by search term
+    let filteredPayments = payments;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredPayments = payments.filter(p => 
+        p.student?.firstName?.toLowerCase().includes(searchLower) ||
+        p.student?.lastName?.toLowerCase().includes(searchLower) ||
+        p.student?.studentId?.toLowerCase().includes(searchLower) ||
+        p.student?.email?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Calculate statistics
+    const stats = {
+      totalStudents: filteredPayments.length,
+      paidCount: filteredPayments.filter(p => p.status === 'paid').length,
+      unpaidCount: filteredPayments.filter(p => p.status === 'unpaid').length,
+      partialCount: filteredPayments.filter(p => p.status === 'partial').length,
+      totalExpected: filteredPayments.reduce((sum, p) => sum + p.amountDue, 0),
+      totalCollected: filteredPayments.reduce((sum, p) => sum + p.amountPaid, 0),
+      totalPending: 0,
+    };
+    stats.totalPending = stats.totalExpected - stats.totalCollected;
+    stats.collectionRate = stats.totalExpected > 0
+      ? ((stats.totalCollected / stats.totalExpected) * 100).toFixed(2) + '%'
+      : '0%';
+
+    res.status(200).json({
+      message: 'Search results fetched successfully',
+      class: className,
+      session,
+      period,
+      search,
+      stats,
+      payments: filteredPayments,
+    });
+  } catch (error) {
+    console.error('Error searching class report:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
