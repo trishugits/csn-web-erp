@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Download, CheckCircle2, Clock, AlertCircle, Search } from "lucide-react";
+import { Loader2, Download, CheckCircle2, Clock, AlertCircle, Search, Mail, Send } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,6 +25,8 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showManualPayment, setShowManualPayment] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [isSendingReminders, setIsSendingReminders] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -87,6 +90,84 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
       toast.success('Report exported successfully!');
     } catch (error) {
       toast.error('Failed to export report');
+    }
+  };
+
+  const handleSelectStudent = (paymentId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedStudents([...selectedStudents, paymentId]);
+    } else {
+      setSelectedStudents(selectedStudents.filter(id => id !== paymentId));
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const unpaidPayments = payments.filter((p: any) => p.status !== 'paid');
+      setSelectedStudents(unpaidPayments.map((p: any) => p._id));
+    } else {
+      setSelectedStudents([]);
+    }
+  };
+
+  const handleSendReminders = async () => {
+    if (selectedStudents.length === 0) {
+      toast.error('Please select at least one student');
+      return;
+    }
+
+    setIsSendingReminders(true);
+    try {
+      const response = await adminApi.sendFeeReminders({
+        studentIds: selectedStudents,
+        class: selectedClass,
+        session,
+        period: selectedPeriod !== 'all' ? selectedPeriod : undefined,
+      });
+
+      const data = response.data;
+      toast.success(`Reminders sent to ${data.summary.sent} students!`);
+      
+      if (data.summary.failed > 0) {
+        toast.warning(`${data.summary.failed} reminders failed to send`);
+      }
+
+      setSelectedStudents([]);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to send reminders');
+    } finally {
+      setIsSendingReminders(false);
+    }
+  };
+
+  const handleSendBulkReminders = async () => {
+    if (!selectedClass) {
+      toast.error('Please select a class first');
+      return;
+    }
+
+    if (!confirm('Send reminders to all students with unpaid/partial fees in this class?')) {
+      return;
+    }
+
+    setIsSendingReminders(true);
+    try {
+      const response = await adminApi.sendBulkFeeReminders({
+        class: selectedClass,
+        session,
+        period: selectedPeriod !== 'all' ? selectedPeriod : undefined,
+      });
+
+      const data = response.data;
+      toast.success(`Bulk reminders sent to ${data.summary.sent} students!`);
+      
+      if (data.summary.failed > 0) {
+        toast.warning(`${data.summary.failed} reminders failed to send`);
+      }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to send bulk reminders');
+    } finally {
+      setIsSendingReminders(false);
     }
   };
 
@@ -155,6 +236,33 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
                     <Download className="w-4 h-4" />
                     Export CSV
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={handleSendBulkReminders}
+                    disabled={payments.length === 0 || isSendingReminders}
+                  >
+                    {isSendingReminders ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4" />
+                    )}
+                    Send to All Unpaid
+                  </Button>
+                  {selectedStudents.length > 0 && (
+                    <Button
+                      className="gap-2"
+                      onClick={handleSendReminders}
+                      disabled={isSendingReminders}
+                    >
+                      {isSendingReminders ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                      Send to Selected ({selectedStudents.length})
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -218,6 +326,12 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={selectedStudents.length > 0 && selectedStudents.length === payments.filter((p: any) => p.status !== 'paid').length}
+                          onCheckedChange={handleSelectAll}
+                        />
+                      </TableHead>
                       <TableHead>Student</TableHead>
                       <TableHead>Student ID</TableHead>
                       <TableHead>Period</TableHead>
@@ -232,7 +346,7 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
                   <TableBody>
                     {payments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                           No payment records found
                         </TableCell>
                       </TableRow>
@@ -245,6 +359,14 @@ export function AdminClassReportTab({ session }: AdminClassReportTabProps) {
                           transition={{ delay: index * 0.05 }}
                           className="hover:bg-accent/50 transition-colors"
                         >
+                          <TableCell>
+                            {payment.status !== 'paid' && (
+                              <Checkbox
+                                checked={selectedStudents.includes(payment._id)}
+                                onCheckedChange={(checked) => handleSelectStudent(payment._id, checked as boolean)}
+                              />
+                            )}
+                          </TableCell>
                           <TableCell className="font-medium">
                             {payment.student?.firstName} {payment.student?.lastName}
                           </TableCell>

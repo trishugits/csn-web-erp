@@ -30,5 +30,7 @@ router.post('/fees/admin/bulk-mark-paid', fee.bulkMarkAsPaid);
 router.get('/fees/admin/payment-records', fee.getPaymentRecordsByDate);
 router.get('/fees/admin/export-records', fee.exportPaymentRecords);
 router.get('/fees/admin/search-class-report', fee.searchClassReport);
+router.post('/fees/admin/send-reminders', fee.sendFeeReminders);
+router.post('/fees/admin/send-bulk-reminders', fee.sendBulkFeeReminders);
 
 module.exports = router;

@@ -373,6 +373,22 @@ export const adminApi = {
   }) => {
     return api.get('/admin/fees/admin/search-class-report', { params });
   },
+  sendFeeReminders: (data: {
+    studentIds: string[];
+    class?: string;
+    session?: string;
+    period?: string;
+  }) => {
+    return api.post('/admin/fees/admin/send-reminders', data);
+  },
+  sendBulkFeeReminders: (data: {
+    class?: string;
+    session?: string;
+    period?: string;
+    status?: string;
+  }) => {
+    return api.post('/admin/fees/admin/send-bulk-reminders', data);
+  },
   getAllStudents: (params?: { page?: number; limit?: number; search?: string; class?: string }) => {
     return api.get('/admin/students', { params });
   },

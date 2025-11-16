@@ -949,3 +949,271 @@ exports.searchClassReport = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
+// Send Fee Payment Reminders
+exports.sendFeeReminders = async (req, res) => {
+  try {
+    const { class: className, session, period, studentIds } = req.body;
+    const sendEmail = require('../utils/sendEmails');
+
+    if (!studentIds || studentIds.length === 0) {
+      return res.status(400).json({ message: 'Student IDs are required' });
+    }
+
+    // Build query for payments
+    const query = {
+      _id: { $in: studentIds },
+      status: { $in: ['unpaid', 'partial'] }
+    };
+
+    if (className) query.class = className;
+    if (session) query.session = session;
+    if (period) query.period = period;
+
+    // Get unpaid/partial payments with student details
+    const payments = await FeePayment.find(query)
+      .populate('student', 'firstName lastName email studentId');
+
+    if (payments.length === 0) {
+      return res.status(404).json({ message: 'No unpaid payments found for selected students' });
+    }
+
+    const emailResults = {
+      sent: [],
+      failed: [],
+    };
+
+    // Send email to each student
+    for (const payment of payments) {
+      if (!payment.student || !payment.student.email) {
+        emailResults.failed.push({
+          studentId: payment.student?.studentId || 'Unknown',
+          reason: 'No email address'
+        });
+        continue;
+      }
+
+      const student = payment.student;
+      const balance = payment.amountDue - payment.amountPaid;
+
+      // Create email content
+      const subject = `Fee Payment Reminder - ${payment.period || 'Pending'}`;
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #667eea; }
+            .amount { font-size: 24px; font-weight: bold; color: #667eea; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+            .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Fee Payment Reminder</h1>
+            </div>
+            <div class="content">
+              <p>Dear ${student.firstName} ${student.lastName},</p>
+              
+              <p>This is a friendly reminder regarding your pending fee payment.</p>
+              
+              <div class="info-box">
+                <p><strong>Student ID:</strong> ${student.studentId}</p>
+                <p><strong>Class:</strong> ${payment.class}</p>
+                <p><strong>Session:</strong> ${payment.session}</p>
+                <p><strong>Period:</strong> ${payment.period}</p>
+                <p><strong>Due Date:</strong> ${payment.dueDate ? new Date(payment.dueDate).toLocaleDateString() : 'N/A'}</p>
+              </div>
+              
+              <div class="info-box">
+                <p><strong>Payment Details:</strong></p>
+                <p>Total Amount Due: ₹${payment.amountDue.toLocaleString()}</p>
+                <p>Amount Paid: ₹${payment.amountPaid.toLocaleString()}</p>
+                <p class="amount">Outstanding Balance: ₹${balance.toLocaleString()}</p>
+              </div>
+              
+              <p>Please make the payment at your earliest convenience to avoid any inconvenience.</p>
+              
+              <p>If you have already made the payment, please disregard this reminder.</p>
+              
+              <p>For any queries, please contact the school administration.</p>
+              
+              <div class="footer">
+                <p>This is an automated reminder. Please do not reply to this email.</p>
+                <p>&copy; ${new Date().getFullYear()} School Management System. All rights reserved.</p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      try {
+        await sendEmail(student.email, subject, html, true);
+        emailResults.sent.push({
+          studentId: student.studentId,
+          name: `${student.firstName} ${student.lastName}`,
+          email: student.email,
+          amount: balance
+        });
+      } catch (error) {
+        emailResults.failed.push({
+          studentId: student.studentId,
+          name: `${student.firstName} ${student.lastName}`,
+          email: student.email,
+          reason: error.message
+        });
+      }
+    }
+
+    res.status(200).json({
+      message: 'Reminders sent successfully',
+      summary: {
+        total: payments.length,
+        sent: emailResults.sent.length,
+        failed: emailResults.failed.length
+      },
+      results: emailResults
+    });
+  } catch (error) {
+    console.error('Error sending fee reminders:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Send Bulk Fee Reminders (for entire class or all unpaid)
+exports.sendBulkFeeReminders = async (req, res) => {
+  try {
+    const { class: className, session, period, status } = req.body;
+    const sendEmail = require('../utils/sendEmails');
+
+    // Build query for unpaid/partial payments
+    const query = {
+      status: status || { $in: ['unpaid', 'partial'] }
+    };
+
+    if (className) query.class = className;
+    if (session) query.session = session;
+    if (period) query.period = period;
+
+    // Get all unpaid/partial payments
+    const payments = await FeePayment.find(query)
+      .populate('student', 'firstName lastName email studentId');
+
+    if (payments.length === 0) {
+      return res.status(404).json({ message: 'No unpaid payments found' });
+    }
+
+    const emailResults = {
+      sent: [],
+      failed: [],
+    };
+
+    // Send email to each student
+    for (const payment of payments) {
+      if (!payment.student || !payment.student.email) {
+        emailResults.failed.push({
+          studentId: payment.student?.studentId || 'Unknown',
+          reason: 'No email address'
+        });
+        continue;
+      }
+
+      const student = payment.student;
+      const balance = payment.amountDue - payment.amountPaid;
+
+      const subject = `Fee Payment Reminder - ${payment.period || 'Pending'}`;
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #667eea; }
+            .amount { font-size: 24px; font-weight: bold; color: #667eea; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Fee Payment Reminder</h1>
+            </div>
+            <div class="content">
+              <p>Dear ${student.firstName} ${student.lastName},</p>
+              
+              <p>This is a friendly reminder regarding your pending fee payment.</p>
+              
+              <div class="info-box">
+                <p><strong>Student ID:</strong> ${student.studentId}</p>
+                <p><strong>Class:</strong> ${payment.class}</p>
+                <p><strong>Session:</strong> ${payment.session}</p>
+                <p><strong>Period:</strong> ${payment.period}</p>
+                <p><strong>Due Date:</strong> ${payment.dueDate ? new Date(payment.dueDate).toLocaleDateString() : 'N/A'}</p>
+              </div>
+              
+              <div class="info-box">
+                <p><strong>Payment Details:</strong></p>
+                <p>Total Amount Due: ₹${payment.amountDue.toLocaleString()}</p>
+                <p>Amount Paid: ₹${payment.amountPaid.toLocaleString()}</p>
+                <p class="amount">Outstanding Balance: ₹${balance.toLocaleString()}</p>
+              </div>
+              
+              <p>Please make the payment at your earliest convenience to avoid any inconvenience.</p>
+              
+              <p>If you have already made the payment, please disregard this reminder.</p>
+              
+              <p>For any queries, please contact the school administration.</p>
+              
+              <div class="footer">
+                <p>This is an automated reminder. Please do not reply to this email.</p>
+                <p>&copy; ${new Date().getFullYear()} School Management System. All rights reserved.</p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      try {
+        await sendEmail(student.email, subject, html, true);
+        emailResults.sent.push({
+          studentId: student.studentId,
+          name: `${student.firstName} ${student.lastName}`,
+          email: student.email,
+          amount: balance
+        });
+      } catch (error) {
+        emailResults.failed.push({
+          studentId: student.studentId,
+          name: `${student.firstName} ${student.lastName}`,
+          email: student.email,
+          reason: error.message
+        });
+      }
+    }
+
+    res.status(200).json({
+      message: 'Bulk reminders sent successfully',
+      summary: {
+        total: payments.length,
+        sent: emailResults.sent.length,
+        failed: emailResults.failed.length
+      },
+      results: emailResults
+    });
+  } catch (error) {
+    console.error('Error sending bulk fee reminders:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
